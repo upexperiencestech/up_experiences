@@ -25,24 +25,38 @@ const getBaseHeaders = () => ({
  */
 export async function fetchExperiences() {
     try {
+        console.log('[API] Fetching experiences from:', EXPERIENCES_TABLE_URL);
+        console.log('[API] Using headers:', getBaseHeaders());
+
         const response = await fetch(EXPERIENCES_TABLE_URL, {
             headers: getBaseHeaders()
         });
 
+        console.log('[API] Response status:', response.status);
+        console.log('[API] Response headers:', [...response.headers.entries()]);
+
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[API] Error response body:', errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
-        
+        console.log('[API] Data received:', data);
+
         // Validate response structure
         if (!data.results || !Array.isArray(data.results)) {
+            console.error('[API] Invalid data structure:', data);
             throw new Error('Invalid response format from API');
         }
 
+        console.log('[API] Successfully fetched', data.results.length, 'experiences');
         return data;
     } catch (error) {
-        console.error('Error fetching experiences:', error);
+        console.error('[API] Error fetching experiences:', error);
+        console.error('[API] Error name:', error.name);
+        console.error('[API] Error message:', error.message);
+        console.error('[API] Error stack:', error.stack);
         throw new Error('Não foi possível carregar as experiências. Tente novamente mais tarde.');
     }
 }
