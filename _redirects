@@ -1,0 +1,10 @@
+# Cloudflare Pages Redirects Configuration
+
+# Serve arquivos estáticos da pasta xp corretamente
+/xp/*  /xp/:splat  200
+
+# Force HTTPS
+http://:host/*  https://:host/:splat  301
+
+# Fallback para index.html em cada pasta
+/xp  /xp/index.html  200
