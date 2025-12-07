@@ -1,0 +1,45 @@
+# Cloudflare Pages Headers Configuration
+# This file configures HTTP headers for better compatibility
+
+/*
+  # Security headers
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # CORS headers - Allow API requests
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, Authorization
+
+  # Cache control for HTML (don't cache)
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.html
+  # Don't cache HTML files
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.js
+  # Cache JavaScript for 1 hour (not too long to allow quick updates)
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/*.css
+  # Cache CSS for 1 hour
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/*.json
+  # Cache JSON for 5 minutes
+  Cache-Control: public, max-age=300, must-revalidate
+
+/*.jpg
+  # Cache images for 1 week
+  Cache-Control: public, max-age=604800, immutable
+
+/*.png
+  # Cache images for 1 week
+  Cache-Control: public, max-age=604800, immutable
+
+/*.webp
+  # Cache images for 1 week
+  Cache-Control: public, max-age=604800, immutable
