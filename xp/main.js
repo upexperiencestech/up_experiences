@@ -1,103 +1,256 @@
+/**
+ * Main application entry point
+ * Coordinates all functionality and initializes the app
+ */
+
 import { loadTranslations, getTranslation } from './locale/translate.js';
 import { openContactModal } from './modal.js';
+import { getUrlLang } from './utils.js';
+import { fetchExperiences, formatExperienceData, validateExperienceData } from './api.js';
+import { 
+    renderExperiences, 
+    updateLanguageLabels, 
+    setupSmoothScrolling, 
+    setupLanguageSelector, 
+    setupRetryButton,
+    showLoading,
+    hideLoading,
+    showError,
+    showData
+} from './ui.js';
 
-const BASEROW_TOKEN = 'B1DXUzsApnrWG5NVa4KVTLloCaenctec';
-const API_URL = 'https://api.baserow.io/api/database/rows/table/583812/?user_field_names=true';
+// Application state
+const appState = {
+    currentLang: getUrlLang(),
+    cachedData: null,
+    translations: {},
+    isLoading: false
+};
 
-function getUrlLang() {
-    const params = new URLSearchParams(window.location.search);
-    const langParam = params.get('lang');
-    if (langParam) {
-        if (langParam.toLowerCase() === 'en_us') return 'en-us';
-        if (langParam.toLowerCase() === 'pt_br') return 'pt-br';
+/**
+ * Initializes the application
+ */
+async function initializeApp() {
+    try {
+        console.log('[INIT] Starting application initialization');
+        console.log('[INIT] Current URL:', window.location.href);
+        console.log('[INIT] Current language:', appState.currentLang);
+
+        // Setup UI components that don't depend on data
+        setupSmoothScrolling();
+        setupLanguageSelector(handleLanguageChange);
+        setupRetryButton(handleRetry);
+
+        // Set initial language in selector
+        const langSelect = document.getElementById('langSelect');
+        if (langSelect) {
+            langSelect.value = appState.currentLang;
+        }
+
+        // Load initial data
+        console.log('[INIT] Loading app data...');
+        await loadAppData();
+        console.log('[INIT] App initialization complete');
+
+    } catch (error) {
+        console.error('[INIT] Error initializing app:', error);
+        showError('Erro ao inicializar a aplicação. Recarregue a página.');
     }
-    return 'pt-br';
 }
 
-let currentLang = getUrlLang();
-let cachedData = null;
-let translations = {};
+/**
+ * Loads translations and experience data
+ */
+async function loadAppData() {
+    if (appState.isLoading) return;
+    
+    appState.isLoading = true;
+    showLoading();
+    
+    try {
+        // Load translations first (they're smaller and faster)
+        await loadTranslationsForLanguage(appState.currentLang);
+        
+        // Load experiences data if not cached
+        if (!appState.cachedData) {
+            appState.cachedData = await fetchExperiences();
+        }
+        
+        // Render the data
+        renderData();
+        
+    } catch (error) {
+        console.error('Error loading app data:', error);
+        
+        // Show different errors based on what failed
+        if (!appState.translations || Object.keys(appState.translations).length === 0) {
+            showError('Erro ao carregar traduções. Verifique sua conexão.');
+        } else {
+            showError(error.message || 'Erro ao carregar experiências. Tente novamente.');
+        }
+    } finally {
+        appState.isLoading = false;
+        hideLoading();
+    }
+}
 
-async function fetchData() {
-    const res = await fetch(API_URL, {
-        headers: {
-            'Authorization': 'Token ' + BASEROW_TOKEN
+/**
+ * Loads translations for a specific language
+ * @param {string} language - Language code
+ */
+async function loadTranslationsForLanguage(language) {
+    try {
+        appState.translations = await loadTranslations(language);
+        updateLanguageLabels(appState.translations);
+    } catch (error) {
+        console.error('Error loading translations:', error);
+        
+        // Fallback to default language if current language fails
+        if (language !== 'pt-br') {
+            console.warn('Falling back to Portuguese translations');
+            appState.currentLang = 'pt-br';
+            appState.translations = await loadTranslations('pt-br');
+            updateLanguageLabels(appState.translations);
+        } else {
+            throw new Error('Não foi possível carregar as traduções');
+        }
+    }
+}
+
+/**
+ * Renders experience data to the UI
+ */
+function renderData() {
+    if (!appState.cachedData || !appState.cachedData.results) {
+        showError('Nenhuma experiência encontrada.');
+        return;
+    }
+    
+    try {
+        // Format and validate experience data
+        const formattedExperiences = appState.cachedData.results
+            .filter(validateExperienceData)
+            .map(experience => formatExperienceData(experience, appState.currentLang));
+        
+        if (formattedExperiences.length === 0) {
+            showError('Nenhuma experiência válida encontrada.');
+            return;
+        }
+        
+        // Render experiences
+        renderExperiences(formattedExperiences, handleContactClick);
+        
+    } catch (error) {
+        console.error('Error rendering data:', error);
+        showError('Erro ao exibir experiências.');
+    }
+}
+
+/**
+ * Handles language change events
+ * @param {string} newLang - New language code
+ */
+async function handleLanguageChange(newLang) {
+    if (newLang === appState.currentLang) return;
+    
+    const previousLang = appState.currentLang;
+    appState.currentLang = newLang;
+    
+    try {
+        // Load new translations
+        await loadTranslationsForLanguage(newLang);
+        
+        // Re-render data with new language if we have cached data
+        if (appState.cachedData) {
+            renderData();
+        }
+        
+    } catch (error) {
+        console.error('Error changing language:', error);
+        
+        // Revert to previous language on error
+        appState.currentLang = previousLang;
+        const langSelect = document.getElementById('langSelect');
+        if (langSelect) {
+            langSelect.value = previousLang;
+        }
+        
+        throw error; // Re-throw for UI handling
+    }
+}
+
+/**
+ * Handles contact button clicks
+ * @param {Object} options - Contact options
+ * @param {string} options.experienceId - Experience ID
+ * @param {string} options.experienceName - Experience name
+ */
+function handleContactClick({ experienceId, experienceName }) {
+    try {
+        openContactModal({
+            experienceId,
+            experienceName
+        });
+    } catch (error) {
+        console.error('Error opening contact modal:', error);
+        alert('Erro ao abrir formulário de contato. Tente novamente.');
+    }
+}
+
+/**
+ * Handles retry button clicks
+ */
+async function handleRetry() {
+    // Clear cached data to force fresh fetch
+    appState.cachedData = null;
+    await loadAppData();
+}
+
+/**
+ * Sets up error handling for the entire application
+ */
+function setupGlobalErrorHandling() {
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('Unhandled promise rejection:', event.reason);
+        
+        // Prevent default browser error handling
+        event.preventDefault();
+        
+        // Show user-friendly error if app is in a broken state
+        if (appState.isLoading) {
+            hideLoading();
+            showError('Erro inesperado. Tente recarregar a página.');
         }
     });
-    if (!res.ok) throw new Error('Erro ao buscar dados');
-    return res.json();
-}
-
-function renderData(data) {
-    const container = document.getElementById('dynamicData');
-    container.innerHTML = '';
-    data.results.forEach(item => {
-        const name = currentLang === 'en-us' ? item.Name_en_us : item.Name_pt_br;
-        const desc = currentLang === 'en-us' ? item.Description_en_us : item.Description_pt_br;
-        const imgUrl = item.Image && item.Image[0] && item.Image[0].thumbnails && item.Image[0].thumbnails.card_cover ? item.Image[0].thumbnails.card_cover.url : '';
-        const card = document.createElement('div');
-        card.className = 'bg-white border border-gray-200 rounded-2xl shadow-lg p-6 flex flex-col md:flex-row gap-6 items-center';
-        card.innerHTML = `
-            ${imgUrl ? `<img src="${imgUrl}" alt="${name}" class="w-full sm:max-w-xs rounded-lg object-cover shadow-md">` : ''}
-            <div class="flex-1">
-                <h2 class="text-2xl font-bold text-gray-900 mb-2">${name}</h2>
-                <p class="text-gray-700 whitespace-pre-line">${desc}</p>
-                <button type="button" class="open-whatsapp inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold mt-4 transition" data-experience-id="${item.id}" data-experience-name="${name}">
-                    <i class='fab fa-whatsapp text-xl'></i>
-                    ${getTranslation('whatsapp')}
-                </button>
-            </div>
-        `;
-        container.appendChild(card);
-    });
-    // Adiciona evento aos botões
-    container.querySelectorAll('.open-whatsapp').forEach(btn => {
-        btn.onclick = () => {
-            openContactModal({
-                experienceName: btn.getAttribute('data-experience-name'),
-                experienceId: btn.getAttribute('data-experience-id')
-            });
-        };
+    
+    // Handle JavaScript errors
+    window.addEventListener('error', (event) => {
+        console.error('JavaScript error:', event.error);
+        
+        // Only show error to user if it's critical
+        if (event.error && event.error.message.includes('fetch')) {
+            showError('Erro de conexão. Verifique sua internet.');
+        }
     });
 }
 
-function updateLangLabels() {
-    document.getElementById('hero-title').textContent = getTranslation('heroTitle');
-    document.getElementById('hero-cta').textContent = getTranslation('heroCta');
+/**
+ * Document ready handler
+ */
+function onDocumentReady() {
+    setupGlobalErrorHandling();
+    initializeApp();
 }
 
-async function init() {
-    translations = await loadTranslations(currentLang);
-    try {
-        cachedData = await fetchData();
-        renderData(cachedData);
-        updateLangLabels();
-    } catch (e) {
-        document.getElementById('dynamicData').innerHTML = `<div class="text-red-600">${getTranslation('error')}</div>`;
-    }
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onDocumentReady);
+} else {
+    onDocumentReady();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Define o valor do select conforme o idioma detectado
-    document.getElementById('langSelect').value = currentLang;
-    document.getElementById('langSelect').addEventListener('change', async function(e) {
-        currentLang = e.target.value;
-        translations = await loadTranslations(currentLang);
-        if (cachedData) renderData(cachedData);
-        updateLangLabels();
-    });
-    // Scroll suave para o botão hero-cta
-    const heroCta = document.getElementById('hero-cta');
-    if (heroCta) {
-        heroCta.addEventListener('click', function(e) {
-            const target = document.getElementById('tours');
-            if (target) {
-                e.preventDefault();
-                target.scrollIntoView({ behavior: 'smooth' });
-            }
-        });
-    }
-    init();
-});
-
-export { currentLang, translations }; 
+// Export current state for debugging (development only)
+if (typeof process !== 'undefined' && process?.env?.NODE_ENV === 'development') {
+    window.appState = appState;
+}
