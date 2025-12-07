@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="UP Experiences - Descubra experiências inesquecíveis no Rio de Janeiro. Tours personalizados, passeios únicos e aventuras incríveis na Cidade Maravilhosa.">
     <title>UP Experiences - Experiências Inesquecíveis no Rio de Janeiro</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.cdnfonts.com/css/orkney?styles=21467,21465,21466,21464" rel="stylesheet">
@@ -12,29 +13,456 @@
 </head>
 <body>
     <!-- Hero Section -->
-    <section class="hero">
-        <div class="hero-background"></div>
+    <header class="hero" role="banner">
+        <div class="hero-background" aria-hidden="true"></div>
         <div class="hero-content flex flex-col items-center">
             <div class="hero-logo">
-                <img src="imgs/logo.png" alt="UP Experiences Logo" class="mx-auto">
+                <img src="imgs/logo.png" alt="UP Experiences - Logo da empresa de turismo no Rio de Janeiro" class="mx-auto">
             </div>
             <h1 id="hero-title" class="hero-title">Experiências Inesquecíveis no Rio de Janeiro</h1>
-            <a href="#tours" id="hero-cta" class="hero-cta">Conheça nossos serviços</a>
+            <a href="#tours" id="hero-cta" class="hero-cta" aria-label="Navegar para a seção de serviços">
+                Conheça nossos serviços
+            </a>
         </div>
-    </section>
-    <div id="tours">
+    </header>
+
+    <!-- Main Content -->
+    <main id="tours">
         <div class="container mx-auto px-4 py-8">
-            <!-- Menu de idioma -->
-            <div class="flex justify-end mb-6">
-                <select id="langSelect" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+            <!-- Language Menu -->
+            <nav class="flex justify-end mb-6" role="navigation" aria-label="Seleção de idioma">
+                <label for="langSelect" class="sr-only">Selecione o idioma</label>
+                <select 
+                    id="langSelect" 
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    aria-label="Alterar idioma da página"
+                >
                     <option value="pt-br">🇧🇷 <span id="langPt">Português</span></option>
                     <option value="en-us">🇺🇸 <span id="langEn">English</span></option>
                 </select>
+            </nav>
+
+            <!-- Dynamic Content Container -->
+            <section id="dynamicData" class="grid gap-8" aria-label="Lista de experiências disponíveis">
+                <!-- Content will be dynamically loaded here -->
+            </section>
+
+            <!-- Loading State -->
+            <div id="loadingState" class="text-center py-12 hidden" aria-live="polite">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Carregando experiências...</p>
             </div>
-            <!-- Container dos dados dinâmicos -->
-            <div id="dynamicData" class="grid gap-8"></div>
+
+            <!-- Error State -->
+            <div id="errorState" class="text-center py-12 hidden" role="alert" aria-live="assertive">
+                <div class="text-red-600 mb-4">
+                    <i class="fas fa-exclamation-triangle text-4xl"></i>
+                </div>
+                <p class="text-red-600 font-medium" id="errorMessage">Erro ao carregar dados dinâmicos.</p>
+                <button 
+                    id="retryButton" 
+                    class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    aria-label="Tentar carregar novamente"
+                >
+                    Tentar novamente
+                </button>
+            </div>
         </div>
-    </div>
-    <script type="module" src="main.js"></script>
+    </main>
+
+    <script>
+        // Configuration
+        const BASEROW_TOKEN = 'B1DXUzsApnrWG5NVa4KVTLloCaenctec';
+        const EXPERIENCES_TABLE_URL = 'https://api.baserow.io/api/database/rows/table/583812/?user_field_names=true';
+        const CONTACTS_TABLE_URL = 'https://api.baserow.io/api/database/rows/table/592260/?user_field_names=true';
+        const WHATSAPP_NUMBER = '5521987838986';
+
+        // Translations
+        const translations = {
+            'pt-br': {
+                whatsapp: 'Fale no WhatsApp',
+                heroTitle: 'Experiências Inesquecíveis no Rio de Janeiro',
+                heroCta: 'Conheça nossos serviços ↓',
+                'contato-whatsapp': 'Fale no WhatsApp',
+                nome: 'Nome',
+                'nome-placeholder': 'Digite seu nome',
+                'whatsapp-placeholder': 'Digite seu WhatsApp',
+                'enviar-mensagem': 'Enviar mensagem'
+            },
+            'en-us': {
+                whatsapp: 'Talk on WhatsApp',
+                heroTitle: 'Unforgettable Experiences in Rio de Janeiro',
+                heroCta: 'Discover our services ↓',
+                'contato-whatsapp': 'Talk on WhatsApp',
+                nome: 'Name',
+                'nome-placeholder': 'Enter your name',
+                'whatsapp-placeholder': 'Enter your WhatsApp',
+                'enviar-mensagem': 'Send message'
+            }
+        };
+
+        let currentLang = 'pt-br';
+        let experiencesData = null;
+
+        // Get language from URL
+        function getUrlLang() {
+            const params = new URLSearchParams(window.location.search);
+            const langParam = params.get('lang');
+            if (langParam) {
+                const normalizedLang = langParam.toLowerCase();
+                if (normalizedLang === 'en_us' || normalizedLang === 'en-us') return 'en-us';
+                if (normalizedLang === 'pt_br' || normalizedLang === 'pt-br') return 'pt-br';
+            }
+            return 'pt-br';
+        }
+
+        // Get translation
+        function t(key) {
+            return translations[currentLang][key] || key;
+        }
+
+        // Fetch experiences from Baserow
+        async function fetchExperiences() {
+            console.log('[API] Fetching experiences...');
+            const response = await fetch(EXPERIENCES_TABLE_URL, {
+                headers: {
+                    'Authorization': `Token ${BASEROW_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('[API] Fetched', data.results.length, 'experiences');
+            return data;
+        }
+
+        // Submit contact to Baserow
+        async function submitContact(name, whatsapp, experienceId, cupom) {
+            const body = {
+                Name: name.trim(),
+                Whatsapp: whatsapp.trim(),
+                Experiências: [Number(experienceId)]
+            };
+
+            if (cupom && cupom.trim()) {
+                body.Parceiro_id = cupom.trim();
+            }
+
+            const response = await fetch(CONTACTS_TABLE_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${BASEROW_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            return await response.json();
+        }
+
+        // Validate Brazilian phone
+        function validateBrazilianPhone(phone) {
+            const cleanPhone = phone.replace(/\D/g, '');
+            return cleanPhone.length === 10 || cleanPhone.length === 11;
+        }
+
+        // Validate name
+        function validateName(name) {
+            const trimmedName = name.trim();
+            const nameRegex = /^[a-zA-ZÀ-ÿ\s\-]{2,}$/;
+            return nameRegex.test(trimmedName);
+        }
+
+        // Format phone number
+        function formatBrazilianPhone(phone) {
+            const cleanPhone = phone.replace(/\D/g, '');
+            if (cleanPhone.length === 11) {
+                return cleanPhone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+            } else if (cleanPhone.length === 10) {
+                return cleanPhone.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+            }
+            return phone;
+        }
+
+        // Open WhatsApp (iOS compatible)
+        function openWhatsApp(message) {
+            const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+            const link = document.createElement('a');
+            link.href = whatsappUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Render experiences
+        function renderExperiences(experiences) {
+            const container = document.getElementById('dynamicData');
+            container.innerHTML = '';
+
+            experiences.forEach((exp) => {
+                const name = currentLang === 'en-us' ? exp.Name_en_us : exp.Name_pt_br;
+                const description = currentLang === 'en-us' ? exp.Description_en_us : exp.Description_pt_br;
+
+                // Get image URL
+                let imageUrl = '';
+                if (exp['Image URL'] && typeof exp['Image URL'] === 'string') {
+                    imageUrl = exp['Image URL'].trim();
+                } else if (exp.Image && exp.Image[0] && exp.Image[0].thumbnails && exp.Image[0].thumbnails.card_cover) {
+                    imageUrl = exp.Image[0].thumbnails.card_cover.url;
+                } else if (exp.Image && exp.Image[0] && exp.Image[0].url) {
+                    imageUrl = exp.Image[0].url;
+                }
+
+                const card = document.createElement('article');
+                card.className = 'bg-white border border-gray-200 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 p-6 flex flex-col md:flex-row gap-6 items-center';
+
+                let imageHtml = '';
+                if (imageUrl) {
+                    imageHtml = `
+                        <div class="experience-image-container w-full sm:max-w-xs">
+                            <img
+                                src="${imageUrl}"
+                                alt="Imagem da experiência: ${name}"
+                                class="w-full h-48 sm:h-56 rounded-lg object-cover shadow-md hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                            >
+                            <div class="image-fallback hidden w-full h-48 sm:h-56 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center shadow-md">
+                                <div class="text-center text-gray-500">
+                                    <i class="fas fa-image text-3xl mb-2"></i>
+                                    <p class="text-sm">Imagem não disponível</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    ${imageHtml}
+                    <div class="flex-1">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">${name}</h2>
+                        <p class="text-gray-700 whitespace-pre-line mb-4">${description}</p>
+                        <button
+                            type="button"
+                            class="contact-btn inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-200"
+                            data-id="${exp.id}"
+                            data-name="${name}"
+                        >
+                            <i class='fab fa-whatsapp text-xl'></i>
+                            ${t('whatsapp')}
+                        </button>
+                    </div>
+                `;
+
+                card.querySelector('.contact-btn').addEventListener('click', () => {
+                    openContactModal(exp.id, name);
+                });
+
+                container.appendChild(card);
+            });
+
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+            container.classList.remove('hidden');
+        }
+
+        // Open contact modal
+        function openContactModal(experienceId, experienceName) {
+            const existingModal = document.getElementById('contact-modal');
+            if (existingModal) existingModal.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'contact-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4';
+
+            modal.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-xl w-full max-w-md relative animate-fade-in">
+                    <div class="p-8">
+                        <button id="close-modal" class="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                            &times;
+                        </button>
+
+                        <h2 class="text-2xl font-bold mb-4 text-gray-900">${t('contato-whatsapp')}</h2>
+                        <p class="text-gray-600 mb-6">Experiência: <strong>${experienceName}</strong></p>
+
+                        <form id="contact-form" class="space-y-4">
+                            <div>
+                                <label class="block text-gray-700 mb-2 font-medium">${t('nome')}*</label>
+                                <input
+                                    id="contact-name"
+                                    type="text"
+                                    required
+                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="${t('nome-placeholder')}"
+                                >
+                                <div id="name-error" class="text-red-600 text-sm mt-1 hidden"></div>
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 mb-2 font-medium">WhatsApp*</label>
+                                <input
+                                    id="contact-whatsapp"
+                                    type="tel"
+                                    required
+                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="${t('whatsapp-placeholder')}"
+                                >
+                                <div id="whatsapp-error" class="text-red-600 text-sm mt-1 hidden"></div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                id="submit-btn"
+                                class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition-all"
+                            >
+                                <i class="fab fa-whatsapp text-xl"></i>
+                                ${t('enviar-mensagem')}
+                            </button>
+                        </form>
+
+                        <div id="form-error" class="text-red-600 text-sm mt-4 hidden"></div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            document.body.style.overflow = 'hidden';
+
+            // Close modal
+            modal.querySelector('#close-modal').addEventListener('click', () => {
+                modal.remove();
+                document.body.style.overflow = '';
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                    document.body.style.overflow = '';
+                }
+            });
+
+            // Phone formatting
+            const whatsappInput = modal.querySelector('#contact-whatsapp');
+            whatsappInput.addEventListener('input', (e) => {
+                const formatted = formatBrazilianPhone(e.target.value);
+                if (formatted !== e.target.value) {
+                    e.target.value = formatted;
+                }
+            });
+
+            // Form submit
+            modal.querySelector('#contact-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const name = modal.querySelector('#contact-name').value.trim();
+                const whatsapp = modal.querySelector('#contact-whatsapp').value.trim();
+                const cupom = new URLSearchParams(window.location.search).get('cupom') || '';
+
+                // Validate
+                if (!validateName(name)) {
+                    modal.querySelector('#name-error').textContent = 'Nome inválido';
+                    modal.querySelector('#name-error').classList.remove('hidden');
+                    return;
+                }
+
+                if (!validateBrazilianPhone(whatsapp)) {
+                    modal.querySelector('#whatsapp-error').textContent = 'WhatsApp inválido';
+                    modal.querySelector('#whatsapp-error').classList.remove('hidden');
+                    return;
+                }
+
+                const submitBtn = modal.querySelector('#submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Enviando...';
+
+                try {
+                    // Submit to Baserow
+                    await submitContact(name, whatsapp, experienceId, cupom);
+
+                    // Generate WhatsApp message
+                    let message = `Olá, estou interessada no passeio ${experienceName}\nMe chamo ${name}\nTelefone ${whatsapp}`;
+                    if (cupom) {
+                        message += `\nCupom de desconto ${cupom}`;
+                    }
+
+                    // Open WhatsApp
+                    openWhatsApp(message);
+
+                    // Close modal
+                    modal.remove();
+                    document.body.style.overflow = '';
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    modal.querySelector('#form-error').textContent = 'Erro ao enviar. Tente novamente.';
+                    modal.querySelector('#form-error').classList.remove('hidden');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = `<i class="fab fa-whatsapp text-xl"></i> ${t('enviar-mensagem')}`;
+                }
+            });
+        }
+
+        // Load data
+        async function loadData() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+
+            try {
+                const data = await fetchExperiences();
+                experiencesData = data.results;
+                renderExperiences(experiencesData);
+            } catch (error) {
+                console.error('Error loading experiences:', error);
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+            }
+        }
+
+        // Change language
+        function changeLanguage(newLang) {
+            currentLang = newLang;
+            document.getElementById('hero-title').textContent = t('heroTitle');
+            document.getElementById('hero-cta').textContent = t('heroCta');
+            if (experiencesData) {
+                renderExperiences(experiencesData);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            currentLang = getUrlLang();
+            document.getElementById('langSelect').value = currentLang;
+
+            // Language selector
+            document.getElementById('langSelect').addEventListener('change', (e) => {
+                changeLanguage(e.target.value);
+            });
+
+            // Retry button
+            document.getElementById('retryButton').addEventListener('click', loadData);
+
+            // Smooth scroll
+            document.getElementById('hero-cta').addEventListener('click', (e) => {
+                e.preventDefault();
+                document.getElementById('tours').scrollIntoView({ behavior: 'smooth' });
+            });
+
+            // Load data
+            loadData();
+        });
+    </script>
 </body>
 </html>
