@@ -381,34 +381,31 @@
                     return;
                 }
 
-                const submitBtn = modal.querySelector('#submit-btn');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Enviando...';
-
-                try {
-                    // Submit to Baserow
-                    await submitContact(name, whatsapp, experienceId, cupom);
-
-                    // Generate WhatsApp message
-                    let message = `Olá, estou interessada no passeio ${experienceName}\nMe chamo ${name}\nTelefone ${whatsapp}`;
-                    if (cupom) {
-                        message += `\nCupom de desconto ${cupom}`;
-                    }
-
-                    // Open WhatsApp
-                    openWhatsApp(message);
-
-                    // Close modal
-                    modal.remove();
-                    document.body.style.overflow = '';
-
-                } catch (error) {
-                    console.error('Error:', error);
-                    modal.querySelector('#form-error').textContent = 'Erro ao enviar. Tente novamente.';
-                    modal.querySelector('#form-error').classList.remove('hidden');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = `<i class="fab fa-whatsapp text-xl"></i> ${t('enviar-mensagem')}`;
+                // Generate WhatsApp message
+                let message = `Olá, estou interessada no passeio ${experienceName}\nMe chamo ${name}\nTelefone ${whatsapp}`;
+                if (cupom) {
+                    message += `\nCupom de desconto ${cupom}`;
                 }
+
+                // IMPORTANT: Open WhatsApp FIRST (before async operations)
+                // This prevents popup blockers since it's a direct user action
+                openWhatsApp(message);
+
+                // Close modal immediately for better UX
+                modal.remove();
+                document.body.style.overflow = '';
+
+                // Submit to Baserow in background (non-blocking)
+                // User doesn't need to wait for this
+                submitContact(name, whatsapp, experienceId, cupom)
+                    .then(() => {
+                        console.log('Contact successfully saved to Baserow');
+                    })
+                    .catch((error) => {
+                        console.error('Error saving contact to Baserow:', error);
+                        // Don't show error to user since WhatsApp already opened
+                        // Could optionally log to analytics/monitoring service
+                    });
             });
         }
 
